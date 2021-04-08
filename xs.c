@@ -149,18 +149,21 @@ xs *xs_new(xs *x, const void *p)
 xs *xs_grow(xs *x, size_t len)
 {
     char buf[16];
+    bool is_short = false;
 
     if (len <= xs_capacity(x))
         return x;
 
     /* Backup first */
-    if (!xs_is_ptr(x))
+    if (!xs_is_ptr(x)) {
         memcpy(buf, x->data, 16);
+        is_short = true;
+    }
 
     x->is_ptr = true;
     x->capacity = ilog2(len) + 1;
 
-    if (xs_is_ptr(x)) {
+    if (!is_short) {
         xs_allocate_data(x, len, 1);
     } else {
         xs_allocate_data(x, len, 0);
