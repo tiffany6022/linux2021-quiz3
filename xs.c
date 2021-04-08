@@ -14,17 +14,17 @@
 
 typedef union {
     /* allow strings up to 15 bytes to stay on the stack
-     *      * use the last byte as a null terminator and to store flags
-     *           * much like fbstring:
-     *                * https://github.com/facebook/folly/blob/master/folly/docs/FBString.md
-     *                     */
+     * use the last byte as a null terminator and to store flags
+     * much like fbstring:
+     * https://github.com/facebook/folly/blob/master/folly/docs/FBString.md
+     */
     char data[16];
 
     struct {
         uint8_t filler[15],
         /* how many free bytes in this stack allocated string
-         *              * same idea as fbstring
-         *                           */
+         * same idea as fbstring
+         */
         space_left : 4,
         /* if it is on heap, set to 1 */
         is_ptr : 1, is_large_string : 1, flag2 : 1, flag3 : 1;
@@ -136,8 +136,8 @@ xs *xs_new(xs *x, const void *p)
 }
 
 /* Memory leaks happen if the string is too long but it is still useful for
- *  * short strings.
- *   */
+ * short strings.
+ */
 #define xs_tmp(x)                                                   \
     ((void) ((struct {                                              \
             _Static_assert(sizeof(x) <= MAX_STR_LEN, "it is too big"); \
@@ -183,6 +183,15 @@ static inline xs *xs_free(xs *x)
     if (xs_is_ptr(x) && xs_dec_refcnt(x) <= 0)
         free(x->ptr);
     return xs_newempty(x);
+}
+
+static inline xs *xs_cow_copy(xs *x)
+{
+    if (!xs_is_large_string(x))
+        return xs_new(&xs_literal_empty(), xs_data(x));
+
+    xs_inc_refcnt(x);
+    return x;
 }
 
 static bool xs_cow_lazy_copy(xs *x, char **data)
@@ -265,9 +274,9 @@ xs *xs_trim(xs *x, const char *trimset)
     slen -= i;
 
     /* reserved space as a buffer on the heap.
-     *      * Do not reallocate immediately. Instead, reuse it as possible.
-     *           * Do not shrink to in place if < 16 bytes.
-     *                */
+     * Do not reallocate immediately. Instead, reuse it as possible.
+     * Do not shrink to in place if < 16 bytes.
+     */
     memmove(orig, dataptr, slen);
     /* do not dirty memory unless it is needed */
     if (orig[slen])
@@ -284,12 +293,29 @@ xs *xs_trim(xs *x, const char *trimset)
 
 int main(int argc, char *argv[])
 {
-    xs string = *xs_tmp("\n foobarbar \n\n\n");
-    xs_trim(&string, "\n ");
-    printf("[%s] : %2zu\n", xs_data(&string), xs_size(&string));
+    xs short_str = *xs_tmp("foobarbar");
+    if (!xs_is_ptr(&short_str))
+        printf("\n-----------------------This is short string.-----------------------\n");
+    printf("[%s] : %2zu\n", xs_data(&short_str), xs_size(&short_str));
+    printf("     string is at address: %p\n", (void*)&short_str);
+    /* xs cpy_short_str = *xs_cow_copy(&short_str); */
+    printf("copy string is at address: %p\n", (void*)xs_cow_copy(&short_str));
 
-    xs prefix = *xs_tmp("((("), suffix = *xs_tmp(")))");
-    xs_concat(&string, &prefix, &suffix);
-    printf("[%s] : %2zu\n", xs_data(&string), xs_size(&string));
+    xs medium_str = *xs_tmp("foobarbarbarbarbar");
+    if (xs_is_ptr(&medium_str) && !xs_is_large_string(&medium_str))
+        printf("\n-----------------------This is medium string.-----------------------\n");
+    printf("[%s] : %2zu\n", xs_data(&medium_str), xs_size(&medium_str));
+    printf("     string is at address: %p\n", (void*)&medium_str);
+    /* xs cpy_medium_str = *xs_cow_copy(&medium_str); */
+    printf("copy string is at address: %p\n", (void*)xs_cow_copy(&medium_str));
+
+    xs long_str = *xs_tmp("foobarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbarbar");
+    if (xs_is_large_string(&long_str))
+        printf("\n-----------------------This is long string.-----------------------\n");
+    printf("[%s] : %2zu\n", xs_data(&long_str), xs_size(&long_str));
+    printf("     string is at address: %p\n", (void*)&long_str);
+    /* xs cpy_long_str = *xs_cow_copy(&long_str); */
+    printf("copy string is at address: %p\n", (void*)xs_cow_copy(&long_str));
+
     return 0;
 }
